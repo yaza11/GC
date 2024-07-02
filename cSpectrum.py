@@ -515,25 +515,54 @@ class Spectrum(BaseClassSpectrum):
 
         self.counts -= ys_min
 
-    def get_standard_areas(self):
+    def get_standard_areas(self, plts=False):
         """
         Find areas of the three standard peaks at beginning and end.
 
         Assuming peaks are square shaped.
         """
-        I0 = self.counts.max()
+        counts: np.ndarray = self.counts.copy()
+        # mute anything in the middle
+        counts[(self.rts > 5) & (self.rts < self.rts.max() - 5)] = 0
+
+        I0 = counts.max()
         peaks, props = find_peaks(
-            self.counts,
+            counts,
             height=.9 * I0,
             prominence=.8 * I0,
             width=3
         )
-        assert len(peaks) >= 6, 'expected 6 standard peaks, found {len(peaks)}'
+
+        assert len(peaks) >= 6, f'expected 6 standard peaks, found {len(peaks)}'
 
         idxs = [0, 1, 2, -3, -2, -1]
         delta_rt = self.rts[1] - self.rts[0]
 
-        areas = (props['widths'][idxs] * delta_rt) * props['peak_heights'][idxs]
+        # areas = (props['widths'][idxs] * delta_rt) * props['peak_heights'][idxs]
+        # integrate from left_ips to right_ips
+        left_bounds = np.around(props["left_ips"]).astype(int)
+        right_bounds = np.around(props["right_ips"]).astype(int)
+
+        areas = np.zeros(len(peaks))
+        for i, (l, r) in enumerate(zip(left_bounds, right_bounds)):
+            area = np.trapz(counts[l:r], x=self.rts[l:r])
+            areas[i] = area
+
+        if plts:
+            plt.plot(self.rts, counts)
+            plt.vlines(
+                x=self.rts[peaks],
+                ymin=self.counts[peaks] - props["prominences"],
+                ymax=self.counts[peaks],
+                color="C1"
+            )
+            plt.hlines(
+                y=props["width_heights"],
+                xmin=self.rts[left_bounds],
+                xmax=self.rts[right_bounds],
+                color="C1"
+            )
+
         return areas
 
     def bin_spectrum(self):

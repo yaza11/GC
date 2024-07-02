@@ -52,6 +52,8 @@ Hence, the measured peaks have to be corrected by the factors
 import numpy as np
 import pandas as pd
 import os
+import logging
+
 from scipy.optimize import root_scalar, fsolve
 from tqdm import tqdm
 
@@ -59,13 +61,15 @@ from cSpectrum import Spectra, Spectrum
 from dxf_reader import DXF
 
 
-K = 9.2e-3  # +/-.18
-a = .516
+logger = logging.getLogger(__name__)
+
+K: float = 9.2e-3  # +/-.18
+a: float = .516
 
 # from dxf reference ratios
-R13_STANDARD = 0.01118  # VPDB
-R17_STANDARD = 0.00038  # VSMOW (redundant, can be calculated from K * R13_STANDARD ** a)
-R18_STANDARD = 0.002005  # VSMOW
+R13_STANDARD: float = 0.01118  # VPDB
+R17_STANDARD: float = 0.00038  # VSMOW (redundant, can be calculated from K * R13_STANDARD ** a)
+R18_STANDARD: float = 0.002005  # VSMOW
 
 R2STD = {
     13: R13_STANDARD,
@@ -73,8 +77,8 @@ R2STD = {
     18: R18_STANDARD,
 }
 
-DELTA_C13_INJECTION_STANDARD = -33.4
-DELTA_O18_INJECTION_STANDARD = 0
+DELTA_C13_INJECTION_STANDARD: float = -33.4
+DELTA_O18_INJECTION_STANDARD: float = 0.
 
 # DELTA_C13_INJECTION_STANDARD = -43.411
 # DELTA_O18_INJECTION_STANDARD = -21.097
@@ -242,7 +246,7 @@ class GC_IRMS:
         for j, (file, col) in enumerate(zip(self.list_path_files, columns)):
             # dxf: DXF = DXF(file)
             # resistances control amplification
-            # higher resistiance --> stronger amplification
+            # higher resistance --> stronger amplification
             # to correct this, divide 45 and 46 by resistances
             # resistors_df: pd.DataFrame = dxf.method_info['resistors']
             # amplifications: pd.Series = (
@@ -254,6 +258,7 @@ class GC_IRMS:
                 s.resample(delta_rt=self.spectra.delta_rt)
                 # align traces
                 time_shift = self.spectra.xcorr(s)
+                logger.info(f'shifting {trace} by {time_shift * 60:.1f} seconds')
                 s.rts += time_shift
                 s.resample(self.spectra.rts)
 
