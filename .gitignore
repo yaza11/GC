@@ -3,3 +3,4 @@ temp.csv
 cache/
 .spyproject/
 .idea/
+test*.py
