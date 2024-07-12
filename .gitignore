@@ -4,3 +4,4 @@ cache/
 .spyproject/
 .idea/
 test*.py
+__pycache__/
