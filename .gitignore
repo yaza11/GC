@@ -1,0 +1,5 @@
+AA_table*.xlsx
+temp.csv
+cache/
+.spyproject/
+.idea/
