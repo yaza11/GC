@@ -13,7 +13,7 @@ LONG_DESCRIPTION = 'A package that allows integrate peaks in GC FID and IRMS dat
 
 # Setting up
 setup(
-    name="pyGC_FID",
+    name="pyGC",
     version=VERSION,
     author="Yannick Zander",
     author_email="yzander@marum.de",
@@ -27,6 +27,7 @@ setup(
     keywords=['python', 'GC', 'FID', 'IRMS', 'dxf'],
     classifiers=[
         "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: Unix",
         "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",
