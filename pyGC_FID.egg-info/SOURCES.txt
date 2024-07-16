@@ -1,0 +1,15 @@
+README.md
+setup.py
+pyGC_FID/__init__.py
+pyGC_FID/cSpectrum.py
+pyGC_FID/dxf_reader.py
+pyGC_FID/gc_irms.py
+pyGC_FID/helper.py
+pyGC_FID.egg-info/PKG-INFO
+pyGC_FID.egg-info/SOURCES.txt
+pyGC_FID.egg-info/dependency_links.txt
+pyGC_FID.egg-info/requires.txt
+pyGC_FID.egg-info/top_level.txt
+tests/test.py
+tests/test_calc.py
+tests/test_irms.py
