@@ -20,6 +20,25 @@ from .dxf_reader import DXF
 logger = logging.getLogger(__name__)
 
 
+def read_chromeleon(path_file: str) -> pd.DataFrame:
+    with open(path_file, 'r') as f:
+        lines = f.readlines()
+    # find start line of data
+    lines_new = []
+    start_write = False
+    for line in lines:
+        if line.strip() == 'Chromatogram Data:':
+            start_write = True
+            continue
+        if not start_write:
+            continue
+        lines_new.append(line.replace('.', '').replace(',', '.').strip('\n').split('\t'))
+
+    df = pd.DataFrame(data=lines_new[1:], columns=lines_new[0])
+    df.drop(columns='Step (s)', inplace=True)
+    return df.astype(float)
+
+
 class BaseClassSpectrum:
     def plot(self, *args, limits=None, hold=False, **kwargs):
         if len(args) == 0:
@@ -282,11 +301,12 @@ class BaseClassSpectrum:
 class Spectrum(BaseClassSpectrum):
     def __init__(
             self, *, 
-            path_file = None, 
+            path_file: str | None = None,
             rts = None, 
             counts = None, 
             limits: tuple[float] | None = None,
-            dxf_trace: str = '44'
+            dxf_trace: str = '44',
+            is_cham: bool = False
     ):
         """
         Convert rtms spectrum to python.
@@ -313,6 +333,8 @@ class Spectrum(BaseClassSpectrum):
         else:
             if os.path.basename(path_file).split('.')[1] == "dxf":
                 self._read_irms(path_file, dxf_trace)
+            elif is_cham:
+                self._read_cham(path_file)
             else:
                 self._read_fid(path_file)
         if limits is not None:  # if limits provided, crop spectrum to interval
@@ -324,6 +346,11 @@ class Spectrum(BaseClassSpectrum):
         df = pd.read_csv(path_file, sep=',')
         self.rts = df['RT'].to_numpy()
         self.counts = df['counts'].to_numpy()
+
+    def _read_cham(self, path_file: str):
+        df = read_chromeleon(path_file)
+        self.rts = df['Time (min)']
+        self.counts = df['Value (pA)']
 
     def _read_irms(self, path_file: str, dxf_trace: str):
         assert dxf_trace in ('44', '45', '46')
