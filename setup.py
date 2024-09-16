@@ -13,7 +13,7 @@ LONG_DESCRIPTION = 'A package that allows integrate peaks in GC FID and IRMS dat
 
 # Setting up
 setup(
-    name="pyGC",
+    name="GC",
     version=VERSION,
     author="Yannick Zander",
     author_email="yzander@marum.de",
