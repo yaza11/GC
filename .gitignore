@@ -5,3 +5,7 @@ cache/
 .idea/
 test*.py
 __pycache__/
+build/
+dist/
+*.egg-info/
+tests/
