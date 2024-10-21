@@ -1,12 +1,11 @@
 # pyGC_FID_processing
 Python class for processing multiple GC-FID files at once (outlier removal, baseline removal, alignment, peak picking)
 
+# Citation
+[![DOI](https://zenodo.org/badge/758034436.svg)](https://doi.org/10.5281/zenodo.13961282)
+
 # Usage
 It is important to execute all of the steps below in order. If the quality of measurement allows it, the remove_outliers and subtract_baseline steps can be omitted
-
-# Citation
-
-[![DOI](https://zenodo.org/badge/758034436.svg)](https://doi.org/10.5281/zenodo.13961282)
 
 Import the object
 ```python
