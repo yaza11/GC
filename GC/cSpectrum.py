@@ -54,28 +54,28 @@ class BaseClassSpectrum:
         plt.plot(rts, counts, *args, **kwargs)
         plt.xlabel('retention time in min')
         plt.ylabel('Intensities')
-        
+
         if hold:
             return fig, ax
         plt.show()
-        
+
     def to_pandas(self):
         """Return mass and intensity as pandas dataframe."""
         df = pd.DataFrame({'RT': self.rts, 'counts': self.counts})
         return df
-    
+
     def set_rt_window(self, window: tuple[int]):
         assert (len(window) == 2) and (window[0] < window[1]), \
             'window should be of the form (lower retention time, upper retention time)'
         mask = (self.rts >= window[0]) & (self.rts <= window[1])
         self.rts = self.rts[mask]
         self.counts = self.counts[mask]
-    
+
     def bigaussian_from_peak(self, peak_idx: int):
         """Find kernel parameters for a peak with the shape of a bigaussian."""
-        assert hasattr(self, 'peaks'), 'call set_peaks first' 
+        assert hasattr(self, 'peaks'), 'call set_peaks first'
         mz_idx = self.peaks[peak_idx]  # mz index of of center 
-        mz_c = self.rts[mz_idx] # center of gaussian
+        mz_c = self.rts[mz_idx]  # center of gaussian
         H = self.counts[mz_idx]
         # width of peak at half maximum
         FWHM_l = self.rts[
@@ -86,9 +86,9 @@ class BaseClassSpectrum:
         ]
         # convert FWHM to standard deviation
         sigma_l = -(FWHM_l - mz_c) / (2 * np.log(2))
-        sigma_r = (FWHM_r - mz_c) / (2 * np.log(2))        
+        sigma_r = (FWHM_r - mz_c) / (2 * np.log(2))
         return mz_c, H, sigma_l, sigma_r
-    
+
     @staticmethod
     def bigaussian(x: np.ndarray, x_c, H, sigma_l, sigma_r):
         """
@@ -115,10 +115,10 @@ class BaseClassSpectrum:
         """
         x_l = x[x <= x_c]
         x_r = x[x > x_c]
-        y_l = H * np.exp(-1/2 * ((x_l - x_c) / sigma_l) ** 2)
-        y_r = H * np.exp(-1/2 * ((x_r - x_c) / sigma_r) ** 2)
+        y_l = H * np.exp(-1 / 2 * ((x_l - x_c) / sigma_l) ** 2)
+        y_r = H * np.exp(-1 / 2 * ((x_r - x_c) / sigma_r) ** 2)
         return np.hstack([y_l, y_r])
-    
+
     def set_peaks(self, prominence: float = .005, width=3, **kwargs):
         """
         Find peaks in summed spectrum using scipy's find_peaks function.
@@ -137,22 +137,22 @@ class BaseClassSpectrum:
 
         """
         prominence *= self.counts.max()
-        
+
         self.peaks, self.peak_properties = find_peaks(
             self.counts, prominence=prominence, width=width, **kwargs
         )
-        
+
         # save parameters to dict for later reference
         self.peak_setting_parameters = kwargs
         self.peak_setting_parameters['prominence'] = prominence
         self.peak_setting_parameters['width'] = width
 
-    def bigaussian_fit_from_peak(self, peak_idx):
+    def bigaussian_fit_from_peak(self, peak_idx, allowed_deviation_percent=20):
         """Find kernel parameters for a peak with the shape of a bigaussian."""
-        assert hasattr(self, 'peaks'), 'call set_peaks first' 
+        assert hasattr(self, 'peaks'), 'call set_peaks first'
         assert hasattr(self, 'kernel_params'), 'cant finetune without initial guess'
-        rt_idx = self.peaks[peak_idx]  # mz index of of center 
-        
+        rt_idx = self.peaks[peak_idx]  # mz index of center
+
         # width of peak at half maximum
         idx_l = (self.peak_properties["left_ips"][peak_idx] + .5).astype(int)
         idx_r = (self.peak_properties["right_ips"][peak_idx] + .5).astype(int)
@@ -160,26 +160,27 @@ class BaseClassSpectrum:
         rt_c, H, sigma_l, sigma_r = self.kernel_params[peak_idx, :]
         if len(self.rts[mask]) < 4:
             return None
-        
+
+        allowed_deviation = allowed_deviation_percent / 100
         bounds_l = [
-            rt_c - sigma_l / 4, 
-            H * .8, 
-            sigma_l * .8,
-            sigma_r * .8
+            rt_c - allowed_deviation * sigma_l,
+            H * (1 - allowed_deviation),
+            sigma_l * (1 - allowed_deviation),
+            sigma_r * (1 - allowed_deviation)
         ]
         bounds_r = [
-            rt_c + sigma_r / 4,    
-            H * 1.2,
-            sigma_l * 1.2,
-            sigma_r * 1.2
+            rt_c + allowed_deviation * sigma_l,
+            H * (1 + allowed_deviation),
+            sigma_l * (1 + allowed_deviation),
+            sigma_r * (1 + allowed_deviation)
         ]
         # print(bounds_l, bounds_r, self.kernel_params[peak_idx, :])
         # print(len(bounds_l), len(bounds_r), len(self.kernel_params[peak_idx, :]))
         try:
             params, _ = curve_fit(
-                f=self.bigaussian, 
-                xdata=self.rts[mask], 
-                ydata=self.counts[mask], 
+                f=self.bigaussian,
+                xdata=self.rts[mask],
+                ydata=self.counts[mask],
                 p0=self.kernel_params[peak_idx, :],
                 bounds=(bounds_l, bounds_r)
             )
@@ -191,7 +192,7 @@ class BaseClassSpectrum:
             return None
         return params
 
-    def set_kernels(self, fine_tune=True):
+    def set_kernels(self, fine_tune=True, **kwargs):
         """
         Based on the peak properties, find bigaussian parameters to 
         approximate spectrum. Creates kernel_params where cols correspond to 
@@ -199,9 +200,9 @@ class BaseClassSpectrum:
         shift, intensity at max, sigma left, sigma right
         """
         assert hasattr(self, 'peaks'), 'call set peaks first'
-        
+
         y = self.counts.copy()
-        
+
         self.kernel_params = np.zeros((len(self.peaks), 4))
         # start with heighest peak, work down
         idxs_peaks = np.argsort(self.peak_properties['prominences'])[::-1]
@@ -209,15 +210,17 @@ class BaseClassSpectrum:
         for idx in idxs_peaks:
             rt_c, H, sigma_l, sigma_r = self.bigaussian_from_peak(idx)
             if (H <= 0) or (sigma_l <= 0) or (sigma_r <= 0):
+                print(f'got implausible parameters for peak {idx}: {H=}, {sigma_l=}, {sigma_r=} (should be positive)')
                 mask_valid[idx] = False
                 continue
             else:
                 self.kernel_params[idx, :] = rt_c, H, sigma_l, sigma_r
             if fine_tune:
-                params = self.bigaussian_fit_from_peak(idx)
+                params = self.bigaussian_fit_from_peak(idx, **kwargs)
                 if params is not None:
                     self.kernel_params[idx, :] = params
-                else: 
+                else:
+                    print(f'could not estimate parameters for peak with idx {idx}')
                     mask_valid[idx] = False
                     continue
             self.counts -= self.bigaussian(
@@ -232,12 +235,12 @@ class BaseClassSpectrum:
         for k, v in self.peak_properties.items():
             props_new[k] = v[mask_valid]
         self.peak_properties = props_new
-        
+
     def get_estimated_spectrum(self):
         assert hasattr(self, 'kernel_params'), 'call set_kernels first'
         # calculate approximated signal by summing up kernels
         counts_approx = np.zeros_like(self.counts, dtype=float)
-        
+
         for i in range(len(self.peaks)):
             y = self.bigaussian(self.rts, *self.kernel_params[i, :]).astype(float)
             counts_approx += y
@@ -300,10 +303,10 @@ class BaseClassSpectrum:
 
 class Spectrum(BaseClassSpectrum):
     def __init__(
-            self, *, 
+            self, *,
             path_file: str | None = None,
-            rts = None, 
-            counts = None, 
+            rts=None,
+            counts=None,
             limits: tuple[float] | None = None,
             dxf_trace: str = '44',
             is_cham: bool = False
@@ -326,11 +329,13 @@ class Spectrum(BaseClassSpectrum):
         """
         assert (path_file is not None) or ((rts is not None) and (counts is not None)), \
             "provide either a path or retention times with counts"
-            
+
         if path_file is None:
             self.rts = rts
             self.counts = counts
+            self.path_file = None
         else:
+            self.path_file = path_file
             if os.path.basename(path_file).split('.')[1] == "dxf":
                 self._read_irms(path_file, dxf_trace)
             elif is_cham:
@@ -360,9 +365,9 @@ class Spectrum(BaseClassSpectrum):
         self.counts = dxf.data.loc[:, dxf_trace]
 
     def resample(
-            self, 
-            delta_rt: float | Iterable[float] = 1e-4 / 3, 
-            check_intervals = False
+            self,
+            delta_rt: float | Iterable[float] = 1e-4 / 3,
+            check_intervals=False
     ):
         """
         Resample mzs and intensities to regular intervals.
@@ -392,7 +397,7 @@ class Spectrum(BaseClassSpectrum):
         # overwrite objects mz vals and intensities
         self.rts = rts_ip
         self.counts = ints_ip
-    
+
     def remove_outliers(
             self, window_length=101, diff_threshold=.001, plts=False
     ) -> np.ndarray:
@@ -406,11 +411,11 @@ class Spectrum(BaseClassSpectrum):
         # diff /= np.max(diff)
         # outliers = diff > diff_threshold
 
-        if plts:        
+        if plts:
             counts_before = self.counts.copy()
         # rts_new = self.rts[~outliers].copy()
         # counts_new = self.counts[~outliers].copy()
-        
+
         self.counts = smoothed
 
         if plts:
@@ -432,16 +437,16 @@ class Spectrum(BaseClassSpectrum):
     #     # normalize
     #     thr = np.percentile(diff, q=quantile)
     #     outliers = diff > thr
-        
+
     #     rts = self.rts.copy()
     #     counts = self.counts.copy()
-        
+
     #     rts = self.rts.copy()
     #     self.rts = self.rts[~outliers]
     #     self.counts = self.counts[~outliers]
-        
+
     #     self.resample(delta_rt=rts)
-        
+
     #     if plts:
     #         plt.figure()
     #         plt.plot(rts, counts, label='original')
@@ -554,25 +559,15 @@ class Spectrum(BaseClassSpectrum):
         I0 = counts.max()
         peaks, props = find_peaks(
             counts,
-            height=.9 * I0,
-            prominence=.8 * I0,
+            height=.7 * I0,
+            prominence=.5 * I0,
             width=3
         )
-
-        assert len(peaks) >= 6, f'expected 6 standard peaks, found {len(peaks)}'
-
-        idxs = [0, 1, 2, -3, -2, -1]
-        delta_rt = self.rts[1] - self.rts[0]
 
         # areas = (props['widths'][idxs] * delta_rt) * props['peak_heights'][idxs]
         # integrate from left_ips to right_ips
         left_bounds = np.around(props["left_ips"]).astype(int)
         right_bounds = np.around(props["right_ips"]).astype(int)
-
-        areas = np.zeros(len(peaks))
-        for i, (l, r) in enumerate(zip(left_bounds, right_bounds)):
-            area = np.trapz(counts[l:r], x=self.rts[l:r])
-            areas[i] = area
 
         if plts:
             plt.plot(self.rts, counts)
@@ -588,13 +583,26 @@ class Spectrum(BaseClassSpectrum):
                 xmax=self.rts[right_bounds],
                 color="C1"
             )
+            plt.title(f'standard areas for {self.path_file}')
+            plt.show()
+
+        assert len(peaks) >= 6, \
+            f'expected 6 standard peaks, found {len(peaks)}'
+
+        idxs = [0, 1, 2, -3, -2, -1]
+        delta_rt = self.rts[1] - self.rts[0]
+
+        areas = np.zeros(len(peaks))
+        for i, (l, r) in enumerate(zip(left_bounds, right_bounds)):
+            area = np.trapz(counts[l:r], x=self.rts[l:r])
+            areas[i] = area
 
         return areas
 
     def bin_spectrum(self):
         """Find intensities of compound based on kernels."""
         N_peaks = len(self.peaks)
-        
+
         dmt = np.abs(np.diff(self.rts)[0])
         kernels = np.zeros((N_peaks, len(self.rts)))
         for idx_peak in range(N_peaks):
@@ -604,14 +612,14 @@ class Spectrum(BaseClassSpectrum):
             H = np.sqrt(2 / np.pi) / (sigma_l + sigma_r)  # normalization constant
             I0 = self.kernel_params[idx_peak, -1]
             kernels[idx_peak] = self.bigaussian(
-                self.rts, 
-                x_c=self.kernel_params[idx_peak, 0], 
+                self.rts,
+                x_c=self.kernel_params[idx_peak, 0],
                 H=H,  # normalized kernels
-                sigma_l=sigma_l, 
+                sigma_l=sigma_l,
                 sigma_r=sigma_r
             )
         kernels = kernels.T
-        
+
         line_spectrum = (self.counts @ kernels) * dmt
         self.line_spectrum = line_spectrum
 
@@ -632,20 +640,22 @@ class Spectrum(BaseClassSpectrum):
         plt.xlabel(r'retention time in min')
         plt.ylabel('Counts')
         plt.show()
-    
+
     def copy(self):
         new = Spectrum(rts=self.rts.copy(), counts=self.counts.copy())
         return new
-        
+
+
 class Spectra(BaseClassSpectrum):
     """Container for multiple Spectrum objects and binning."""
+
     def __init__(
             self,
             *,
             list_path_files: list[str] = None,
             spectra: list[Spectrum] = None,
             limits: tuple[float] = None,
-            delta_rt = 1e-4 / 3
+            delta_rt=1e-4 / 3
     ):
         """
         Initiate the object. 
@@ -666,38 +676,47 @@ class Spectra(BaseClassSpectrum):
         -------
         None.
 
-        """        
+        """
         assert (list_path_files is not None) or (spectra is not None), \
             'provide either a list of files or a list of spectra'
 
         if list_path_files is not None:
             self.list_path_files = list_path_files
             spectra = [
-                Spectrum(path_file=file, limits=limits) 
+                Spectrum(path_file=file, limits=limits)
                 for file in list_path_files
             ]
         self.spectra = spectra
         # ensure uniform measurment points
         self.delta_rt = delta_rt
         self.resample_all(delta_rt=self.delta_rt)
-        
+
     def resample_all(self, **kwargs):
-        for spec in self.spectra:
-            spec.resample(**kwargs)
-        
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.resample(**kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
     def remove_outliers_all(self, **kwargs):
-        for spec in self.spectra:
-            spec.remove_outliers(**kwargs)
-    
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.remove_outliers(**kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
     def subtract_base_line_all(self, **kwargs):
-        for spec in self.spectra:
-            spec.subtract_base_line(**kwargs)        
-    
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.subtract_base_line(**kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
     def set_lag_table(self, maxlags=500):
         n = len(self.spectra)
         table = np.zeros((n, n))
-        indices =  np.triu_indices_from(table)
-        
+        indices = np.triu_indices_from(table)
+
         for i, j in zip(*indices):
             if i == j:
                 continue
@@ -705,10 +724,10 @@ class Spectra(BaseClassSpectrum):
             spec_b = self.spectra[j]
             dist = spec_a.xcorr(spec_b, maxlags=maxlags)
             table[i, j] = dist
-            
+
         # fill lower triangle matrix
         self.lag_table = table - table.T
-    
+
     def get_rts_extent(self):
         rt_min = np.infty
         rt_max = -np.infty
@@ -719,33 +738,43 @@ class Spectra(BaseClassSpectrum):
             if (rt_upper := spec.rts.max()) > rt_max:
                 rt_max = rt_upper
         return rt_min, rt_max
-    
+
     def align_spectra(self, **kwargs):
         # align everything to first spectrum
         spec0 = self.spectra[0]
-        
+
         for spec in self.spectra[1:]:
             time_shift = spec0.xcorr(spec, **kwargs)
             spec.rts += time_shift
-            print(f'shifted spec by {time_shift*60:.1f} seconds')
-            
+            print(f'shifted spec by {time_shift * 60:.1f} seconds')
+
         # resample
         rt_min, rt_max = self.get_rts_extent()
         rts = np.arange(rt_min, rt_max + self.delta_rt, self.delta_rt)
         self.resample_all(delta_rt=rts)
-        
+
     def set_rt_window_all(self, *args, **kwargs):
-        for spec in self.spectra:
-            spec.set_rt_window(*args, **kwargs)
-    
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.set_rt_window(*args, **kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
     def set_peaks_all(self, **kwargs):
-        for spec in self.spectra:
-            spec.set_peaks(**kwargs)
-            
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.set_peaks(**kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
+
     def set_kernels_all(self, **kwargs):
-        for spec in self.spectra:
-            spec.set_kernels(**kwargs)
-        
+        for i, spec in enumerate(self.spectra):
+            try:
+                spec.set_kernels(**kwargs)
+            except Exception as e:
+                warnings.warn(f'failed resampling for spectrum {spec.path_file} (index {i}): {e}')
+
     def set_summed(self):
         rt_min, rt_max = self.get_rts_extent()
         rts = np.arange(rt_min, rt_max + self.delta_rt, self.delta_rt)
@@ -757,7 +786,7 @@ class Spectra(BaseClassSpectrum):
             )
             counts[mask] += spec.counts
         self.rts, self.counts = rts, counts
-        
+
     def bin_spectrum(self):
         def _bin_spectrum(spectrum, idx):
             """Find intensities of compound based on kernels."""
@@ -781,12 +810,12 @@ class Spectra(BaseClassSpectrum):
             #     line_spectrum[idx_peak] = np.sum(weighted_signal) * dmz
             line_spectrum = (spectrum.counts @ kernels) * self.delta_rt
             self.line_spectra[idx, :] = line_spectrum
-        
+
         self.resample_all(delta_rt=self.rts)
         N_spectra = len(self.spectra)  # number of spectra 
         N_peaks = len(self.peaks)  # number of identified peaks
         self.line_spectra = np.zeros((N_spectra, N_peaks))  # result array
-        
+
         # precompute bigaussians
         kernels = np.zeros((N_peaks, len(self.rts)))
         for idx_peak in tqdm(range(N_peaks), desc='creating kernels'):
@@ -795,20 +824,19 @@ class Spectra(BaseClassSpectrum):
             sigma_r = self.kernel_params[idx_peak, 3]
             H = np.sqrt(2)
             kernels[idx_peak] = self.bigaussian(
-                self.rts, 
-                x_c=self.kernel_params[idx_peak, 0], 
+                self.rts,
+                x_c=self.kernel_params[idx_peak, 0],
                 H=H,  # normalized kernels
-                sigma_l=sigma_l, 
+                sigma_l=sigma_l,
                 sigma_r=sigma_r
             )
         kernels = kernels.T
-        
+
         # iterate over spectra and bin according to kernels
         logger.info(f'binning {N_spectra} spectra into {N_peaks} bins ...')
         for it, spectrum in tqdm(enumerate(self.spectra), desc='binning spectra ...'):
             _bin_spectrum(spectrum, it)
 
-            
     def plt_summed(self, plt_all=False):
         if not hasattr(self, 'counts'):
             self.set_summed()
@@ -816,7 +844,7 @@ class Spectra(BaseClassSpectrum):
             counts_approx = self.get_estimated_spectrum()
         plt.figure()
         if plt_all:
-            for spec in self.spectra:    
+            for spec in self.spectra:
                 plt.plot(spec.rts, spec.counts)
         plt.plot(self.rts, self.counts, label='summed')
         if hasattr(self, 'kernel_params'):
@@ -824,24 +852,24 @@ class Spectra(BaseClassSpectrum):
         plt.xlabel('retention time in minutes')
         plt.ylabel('Summed counts')
         plt.show()
-        
+
     def get_dataframe(self):
         """Turn the line_spectra into the familiar df with R, x, y columns."""
         assert hasattr(self, 'line_spectra'), 'create line spectra with bin_spectra'
-        
+
         if hasattr(self, 'list_path_files'):
             index = [os.path.basename(file) for file in self.list_path_files]
         else:
             index = None
-        
+
         df = pd.DataFrame(
-            data=self.line_spectra.copy(), 
+            data=self.line_spectra.copy(),
             columns=np.around(self.kernel_params[:, 0], 4).astype(str),
             index=index
         )
-    
+
         return df.T
-    
+
     def set_reconstruction_losses(self, idxs: list[int] = None, plts=False, ylim=None):
         """
         Obtain the loss of information for each spectrum from the binning.
@@ -855,19 +883,19 @@ class Spectra(BaseClassSpectrum):
         loss in terms of the integrated difference divided by the area of the 
         original signal.
         """
+
         def H_from_area(area, sigma_l, sigma_r):
             # \int_{-infty}^{infty} H \exp(- (x - x_c)^2 / (2 sigma)^2)dx 
             #   = sqrt(2 pi) H sigma
             # => A = H sqrt(pi / 2) (sigma_l + sigma_r)
             # <=> H = sqrt(2 / pi) * A* 1 / (sigma_l + sigma_r)
             return np.sqrt(2 / np.pi) * area / (sigma_l + sigma_r)
-        
+
         if idxs is None:
             idxs = np.arange(len(self.spectra))
-        
+
         self.losses = np.zeros(len(self.spectra))
-        for c, idx in enumerate(idxs):
-            print(f'setting loss for spectrum {c + 1} out of {len(idxs)} ...')
+        for c, idx in tqdm(enumerate(idxs), total=len(idxs), desc='setting loss for spectra'):
             spec = self.spectra[idx]
             N_peaks = len(self.peaks)
             rts = spec.rts
@@ -881,7 +909,7 @@ class Spectra(BaseClassSpectrum):
                 y_rec += self.bigaussian(rts, x_c, H, sigma_l, sigma_r)
             loss = np.sum(np.abs(spec.counts - y_rec)) / np.sum(spec.counts)
             self.losses[idx] = loss
-            
+
             if plts:
                 plt.figure()
                 plt.plot(spec.rts, spec.counts, label='original')
@@ -891,11 +919,7 @@ class Spectra(BaseClassSpectrum):
                     plt.ylim(ylim)
                 plt.title(f'Reconstruction loss: {loss:.3f}')
                 plt.show()
-    
+
+
 if __name__ == '__main__':
     pass
-    
-    
-            
-        
-
