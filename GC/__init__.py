@@ -1,3 +1,3 @@
-from .cSpectrum import Spectrum, Spectra
+from .cSpectrum import GcSpectrum, Spectra
 from .dxf_reader import DXF
-from .gc_irms import GC_IRMS
+

@@ -9,7 +9,7 @@ with codecs.open(os.path.join(here, "README.md"), encoding="utf-8") as fh:
 
 VERSION = '0.0.1'
 DESCRIPTION = 'Analyse GC FID and IRMS data (dxf and txt files)'
-LONG_DESCRIPTION = 'A package that allows integrate peaks in GC FID and IRMS data.'
+LONG_DESCRIPTION = 'A package that allows integration of peaks in GC FID and IRMS data.'
 
 # Setting up
 setup(
@@ -22,7 +22,7 @@ setup(
     long_description=long_description,
     url="https://github.com/yaza11/pyGC_FID_processing",
     packages=find_packages(),
-    install_requires=['matplotlib', 'numpy', 'pandas', 'rpy2', 'scipy', 'tqdm'],
+    install_requires=['matplotlib', 'numpy', 'pandas', 'rpy2', 'scipy', 'tqdm', 'openpyxl', 'chem-spectra'],
     extras_require={'dev': 'twine'},
     keywords=['python', 'GC', 'FID', 'IRMS', 'dxf'],
     classifiers=[

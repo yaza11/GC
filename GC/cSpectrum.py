@@ -15,28 +15,10 @@ from scipy.optimize import curve_fit
 from scipy.ndimage import minimum_filter, median_filter
 from tqdm import tqdm
 
+from readers.chromeleon import read_chromeleon_data
 from .dxf_reader import DXF
 
 logger = logging.getLogger(__name__)
-
-
-def read_chromeleon(path_file: str) -> pd.DataFrame:
-    with open(path_file, 'r') as f:
-        lines = f.readlines()
-    # find start line of data
-    lines_new = []
-    start_write = False
-    for line in lines:
-        if line.strip() == 'Chromatogram Data:':
-            start_write = True
-            continue
-        if not start_write:
-            continue
-        lines_new.append(line.replace('.', '').replace(',', '.').strip('\n').split('\t'))
-
-    df = pd.DataFrame(data=lines_new[1:], columns=lines_new[0])
-    df.drop(columns='Step (s)', inplace=True)
-    return df.astype(float)
 
 
 class BaseClassSpectrum:
@@ -301,7 +283,7 @@ class BaseClassSpectrum:
         return time
 
 
-class Spectrum(BaseClassSpectrum):
+class GcSpectrum(BaseClassSpectrum):
     def __init__(
             self, *,
             path_file: str | None = None,
@@ -311,22 +293,6 @@ class Spectrum(BaseClassSpectrum):
             dxf_trace: str = '44',
             is_cham: bool = False
     ):
-        """
-        Convert rtms spectrum to python.
-
-        Parameters
-        ----------
-        rspectrum : rtms.Spectrum
-            The rtms object to convet.
-        limits : tuple[float] | None, optional
-            mz limits to crop the spectrum as a tuple with upper and lower bound. 
-            The default is None and will not crop the spectrum.
-
-        Returns
-        -------
-        None.
-
-        """
         assert (path_file is not None) or ((rts is not None) and (counts is not None)), \
             "provide either a path or retention times with counts"
 
@@ -353,7 +319,7 @@ class Spectrum(BaseClassSpectrum):
         self.counts = df['counts'].to_numpy()
 
     def _read_cham(self, path_file: str):
-        df = read_chromeleon(path_file)
+        df = read_chromeleon_data(path_file)
         self.rts = df['Time (min)']
         self.counts = df['Value (pA)']
 
@@ -642,7 +608,7 @@ class Spectrum(BaseClassSpectrum):
         plt.show()
 
     def copy(self):
-        new = Spectrum(rts=self.rts.copy(), counts=self.counts.copy())
+        new = GcSpectrum(rts=self.rts.copy(), counts=self.counts.copy())
         return new
 
 
@@ -653,7 +619,7 @@ class Spectra(BaseClassSpectrum):
             self,
             *,
             list_path_files: list[str] = None,
-            spectra: list[Spectrum] = None,
+            spectra: list[GcSpectrum] = None,
             limits: tuple[float] = None,
             delta_rt=1e-4 / 3
     ):
@@ -667,7 +633,7 @@ class Spectra(BaseClassSpectrum):
         ----------
         list_path_files: list[str]
             List containing the files to be analized.
-        spectra: list[Spectrum]
+        spectra: list[GcSpectrum]
             List containing spectra classes
         limits : tuple[float], optional
             Limits for the retention times. The default is None.
@@ -683,7 +649,7 @@ class Spectra(BaseClassSpectrum):
         if list_path_files is not None:
             self.list_path_files = list_path_files
             spectra = [
-                Spectrum(path_file=file, limits=limits)
+                GcSpectrum(path_file=file, limits=limits)
                 for file in list_path_files
             ]
         self.spectra = spectra
